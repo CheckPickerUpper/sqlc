@@ -314,9 +314,52 @@ func (c *cc) convertCreateVirtualTableStmt(n *meyer.CreateVirtualTableStmt) ast.
 	case "fts5":
 		// https://www.sqlite.org/fts5.html
 		return c.convertCreateVirtualTableFTS5(n)
+	case "vec0":
+		// https://alexgarcia.xyz/sqlite-vec/
+		return c.convertCreateVirtualTableVec0(n)
 	default:
 		return c.convertCreateVirtualTableModule(n)
 	}
+}
+
+// convertCreateVirtualTableVec0 reads a sqlite-vec table: the columns its
+// arguments declare, plus the two every vec0 table answers for without
+// declaring them.
+//
+// A module's implicit columns are named in the CREATE TABLE it passes to
+// sqlite3_declare_vtab, which sqlc cannot run, so they are only knowable per
+// module. Reading them generically is not an option: a column admitted without
+// a type generates an empty interface, and a caller cannot order by a distance
+// it cannot compare. fts5 is read the same way, for the same reason.
+func (c *cc) convertCreateVirtualTableVec0(n *meyer.CreateVirtualTableStmt) ast.Node {
+	stmt := c.virtualTableStmt(n)
+	for _, arg := range n.Args {
+		name, typeName := moduleColumn(arg)
+		if name == "" {
+			continue
+		}
+		stmt.Cols = append(stmt.Cols, &ast.ColumnDef{
+			Colname:  name,
+			TypeName: &ast.TypeName{Name: typeName},
+		})
+	}
+	// A KNN search reads `distance` and every vec0 table has a `rowid`.
+	// Hidden keeps them out of star expansions and the table's model, so a
+	// query that names one gets it and one that does not is unchanged.
+	stmt.Cols = append(stmt.Cols,
+		&ast.ColumnDef{
+			Colname:  "distance",
+			IsHidden: true,
+			TypeName: &ast.TypeName{Name: "real"},
+		},
+		&ast.ColumnDef{
+			Colname:   "rowid",
+			IsNotNull: true,
+			IsHidden:  true,
+			TypeName:  &ast.TypeName{Name: "integer"},
+		},
+	)
+	return stmt
 }
 
 // virtualTableStmt builds the table a CREATE VIRTUAL TABLE declares, without
