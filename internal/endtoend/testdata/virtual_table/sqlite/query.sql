@@ -26,6 +26,15 @@ WHERE b MATCH ?;
 -- name: SelectSnippetFunc :many
 SELECT snippet(tbl_ft, 0, '<b>', '</b>', 'aa', ?) FROM tbl_ft;
 
+-- name: SelectHiddenCols :many
+SELECT rowid, rank
+FROM tbl_ft
+WHERE tbl_ft MATCH ?
+ORDER BY rank;
+
+-- name: SelectStarFt :many
+SELECT * FROM ft;
+
 -- name: SelectBm25Func :many
 SELECT b, c, bm25(tbl_ft, 2.0)
 FROM tbl_ft
@@ -40,3 +49,6 @@ DELETE FROM tbl_ft WHERE b = ?;
 
 -- name: InsertTblFt :exec
 INSERT INTO tbl_ft (b, c) VALUES (?, ?);
+
+-- name: InsertTblFtRowid :exec
+INSERT INTO tbl_ft (rowid, b, c) VALUES (?, ?, ?);

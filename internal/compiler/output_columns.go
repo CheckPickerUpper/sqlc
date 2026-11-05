@@ -285,6 +285,9 @@ func (c *Compiler) outputColumns(qc *QueryCatalog, node ast.Node) ([]*Column, er
 						continue
 					}
 					for _, c := range t.Columns {
+						if c.IsHidden {
+							continue
+						}
 						cname := c.Name
 						if res.Name != nil {
 							cname = *res.Name

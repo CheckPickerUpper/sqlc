@@ -7,6 +7,7 @@ package querytest
 
 import (
 	"context"
+	"database/sql"
 )
 
 const deleteTblFt = `-- name: DeleteTblFt :exec
@@ -29,6 +30,21 @@ type InsertTblFtParams struct {
 
 func (q *Queries) InsertTblFt(ctx context.Context, arg InsertTblFtParams) error {
 	_, err := q.db.ExecContext(ctx, insertTblFt, arg.B, arg.C)
+	return err
+}
+
+const insertTblFtRowid = `-- name: InsertTblFtRowid :exec
+INSERT INTO tbl_ft (rowid, b, c) VALUES (?, ?, ?)
+`
+
+type InsertTblFtRowidParams struct {
+	Rowid int64
+	B     string
+	C     string
+}
+
+func (q *Queries) InsertTblFtRowid(ctx context.Context, arg InsertTblFtRowidParams) error {
+	_, err := q.db.ExecContext(ctx, insertTblFtRowid, arg.Rowid, arg.B, arg.C)
 	return err
 }
 
@@ -113,6 +129,41 @@ func (q *Queries) SelectBm25Func(ctx context.Context, b string) ([]SelectBm25Fun
 	for rows.Next() {
 		var i SelectBm25FuncRow
 		if err := rows.Scan(&i.B, &i.C, &i.Bm25); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const selectHiddenCols = `-- name: SelectHiddenCols :many
+SELECT rowid, rank
+FROM tbl_ft
+WHERE tbl_ft MATCH ?
+ORDER BY rank
+`
+
+type SelectHiddenColsRow struct {
+	Rowid int64
+	Rank  sql.NullFloat64
+}
+
+func (q *Queries) SelectHiddenCols(ctx context.Context, tblFt string) ([]SelectHiddenColsRow, error) {
+	rows, err := q.db.QueryContext(ctx, selectHiddenCols, tblFt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SelectHiddenColsRow
+	for rows.Next() {
+		var i SelectHiddenColsRow
+		if err := rows.Scan(&i.Rowid, &i.Rank); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -230,6 +281,33 @@ func (q *Queries) SelectSnippetFunc(ctx context.Context, snippet int64) ([]strin
 			return nil, err
 		}
 		items = append(items, snippet)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const selectStarFt = `-- name: SelectStarFt :many
+SELECT b FROM ft
+`
+
+func (q *Queries) SelectStarFt(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, selectStarFt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var b string
+		if err := rows.Scan(&b); err != nil {
+			return nil, err
+		}
+		items = append(items, b)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

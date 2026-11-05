@@ -74,6 +74,7 @@ func ConvertColumn(rel *ast.TableName, c *catalog.Column) *Column {
 		ArrayDims: c.ArrayDims,
 		Type:      &c.Type,
 		Length:    c.Length,
+		IsHidden:  c.IsHidden,
 	}
 }
 
