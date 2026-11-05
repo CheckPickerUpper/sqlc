@@ -64,16 +64,30 @@
  
  -- name: MakeRecipeIndex :exec
  CREATE VIRTUAL TABLE recipes_fts USING fts5(
-@@ -67,7 +74,7 @@
+@@ -67,10 +74,12 @@
+ );
+ 
+ -- name: MakeAreaIndex :exec
++CREATE VIRTUAL TABLE areas USING rtree(
++  id,
++  minX,
++  maxX,
++  minY,
++  maxY
+-CREATE  VIRTUAL  TABLE areas USING rtree(
+-        id,
+-        minX, maxX,
+-        minY, maxY
  );
  
  -- name: LoginName :one
+@@ -77,4 +86,4 @@
 +SELECT coalesce(bio, '') AS login FROM authors WHERE id = ? LIMIT 1;
 -SELECT COALESCE(bio, '') AS login FROM authors WHERE id = ? LIMIT 1;
  
  -- name: SpelledJoins :many
  SELECT a.id
-@@ -74,6 +81,6 @@
+@@ -81,6 +90,6 @@
  FROM authors AS a
 +JOIN authors AS b ON a.id = b.id
 +LEFT JOIN authors AS c ON a.id = c.id

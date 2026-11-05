@@ -66,6 +66,13 @@ CREATE VIRTUAL TABLE recipes_fts USING fts5(
   ingredients
 );
 
+-- name: MakeAreaIndex :exec
+CREATE  VIRTUAL  TABLE areas USING rtree(
+        id,
+        minX, maxX,
+        minY, maxY
+);
+
 -- name: LoginName :one
 SELECT COALESCE(bio, '') AS login FROM authors WHERE id = ? LIMIT 1;
 

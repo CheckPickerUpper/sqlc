@@ -1,12 +1,13 @@
 package sqlite
 
 import (
-	"fmt"
 	"log"
 	"strconv"
 	"strings"
+	"unicode"
 
 	meyer "github.com/sqlc-dev/meyer/ast"
+	mtoken "github.com/sqlc-dev/meyer/token"
 
 	"github.com/sqlc-dev/sqlc/internal/debug"
 	"github.com/sqlc-dev/sqlc/internal/sql/ast"
@@ -314,14 +315,13 @@ func (c *cc) convertCreateVirtualTableStmt(n *meyer.CreateVirtualTableStmt) ast.
 		// https://www.sqlite.org/fts5.html
 		return c.convertCreateVirtualTableFTS5(n)
 	default:
-		return todo(
-			fmt.Sprintf("create_virtual_table. unsupported module name: %q", moduleName),
-			n,
-		)
+		return c.convertCreateVirtualTableModule(n)
 	}
 }
 
-func (c *cc) convertCreateVirtualTableFTS5(n *meyer.CreateVirtualTableStmt) ast.Node {
+// virtualTableStmt builds the table a CREATE VIRTUAL TABLE declares, without
+// its columns. The module's arguments are kept verbatim for the formatter.
+func (c *cc) virtualTableStmt(n *meyer.CreateVirtualTableStmt) *ast.CreateTableStmt {
 	stmt := &ast.CreateTableStmt{
 		Name:        parseTableName(n.Name),
 		IfNotExists: n.IfNotExists,
@@ -339,13 +339,43 @@ func (c *cc) convertCreateVirtualTableFTS5(n *meyer.CreateVirtualTableStmt) ast.
 			stmt.ModuleArgsMultiline = strings.Contains(c.src[n.Pos():n.End()], "\n")
 		}
 	}
+	return stmt
+}
+
+// convertCreateVirtualTableModule reads the columns of a table created with a
+// module sqlc knows nothing about. A module is handed the text inside the
+// parentheses and declares its table by passing a CREATE TABLE statement to
+// sqlite3_declare_vtab, so an argument that declares a column names it the
+// way an ordinary column definition does, whatever the module adds after it.
+// Reading those names keeps the table in the catalog, which is what queries
+// against it need; a module-specific handler would have to exist for every
+// extension in use.
+func (c *cc) convertCreateVirtualTableModule(n *meyer.CreateVirtualTableStmt) ast.Node {
+	stmt := c.virtualTableStmt(n)
+	for _, arg := range n.Args {
+		name, typeName := moduleColumn(arg)
+		if name == "" {
+			continue
+		}
+		col := &ast.ColumnDef{Colname: name, TypeName: &ast.TypeName{Name: typeName}}
+		if typeName == "" {
+			col.Typeless = true
+			col.TypeName.Name = "any"
+		}
+		stmt.Cols = append(stmt.Cols, col)
+	}
+	return stmt
+}
+
+func (c *cc) convertCreateVirtualTableFTS5(n *meyer.CreateVirtualTableStmt) ast.Node {
+	stmt := c.virtualTableStmt(n)
 
 	// The module arguments of a virtual table are an arbitrary token
 	// sequence, so meyer hands them back as source text. For fts5 an
 	// argument is either a column ("b", or "c UNINDEXED") or one of the
 	// module's own options, which are always written as "key = value".
 	for _, arg := range n.Args {
-		name := fts5ColumnName(arg)
+		name, _ := moduleColumn(arg)
 		if name == "" {
 			continue
 		}
@@ -385,14 +415,43 @@ func (c *cc) convertCreateVirtualTableFTS5(n *meyer.CreateVirtualTableStmt) ast.
 	return stmt
 }
 
-// fts5ColumnName returns the column an fts5 module argument declares, or the
-// empty string when the argument configures the module instead.
-func fts5ColumnName(arg string) string {
-	if strings.ContainsRune(arg, '=') {
+// moduleColumn reads the column a virtual table's module argument declares:
+// its name, and the type it declares where it declares one. Both are empty
+// when the argument configures the module instead, which it does by reading
+// "key = value" — the one spelling a column definition cannot have, since a
+// column's name is followed by its type or by a constraint, never by "=".
+// An argument that only names a column, as "minX" does for rtree, or that
+// carries an option of the module's own after the type, as
+// "embedding float[384] distance_metric=cosine" does for sqlite-vec, is a
+// column.
+func moduleColumn(arg string) (name, typeName string) {
+	arg = strings.TrimSpace(arg)
+	if key, _, found := strings.Cut(arg, "="); found && strings.IndexFunc(strings.TrimSpace(key), unicode.IsSpace) < 0 {
+		return "", ""
+	}
+	nameText := arg
+	rest := ""
+	if cut := strings.IndexFunc(arg, unicode.IsSpace); cut >= 0 {
+		nameText, rest = arg[:cut], arg[cut:]
+	}
+	return unquoteIdent(nameText), declaredTypeName(rest)
+}
+
+// declaredTypeName returns the type named by what follows a column's name in
+// a module argument, or the empty string when nothing there names one. A
+// SQLite type name is a sequence of names that are not keywords, so the
+// keyword that opens a constraint — NOT, PRIMARY, DEFAULT and the rest — is
+// what says the column is typeless. The type's own arguments are dropped, so
+// both "varchar(16)" and the "float[384]" an extension writes report the name
+// sqlc maps.
+func declaredTypeName(rest string) string {
+	words := strings.FieldsFunc(strings.ToLower(rest), func(r rune) bool {
+		return unicode.IsSpace(r) || r == '(' || r == '[' || r == '='
+	})
+	if len(words) == 0 || mtoken.Lookup(words[0]) != mtoken.ID {
 		return ""
 	}
-	name, _, _ := strings.Cut(strings.TrimSpace(arg), " ")
-	return unquoteIdent(name)
+	return words[0]
 }
 
 // unquoteIdent folds a name that has not been through the lexer, as happens
