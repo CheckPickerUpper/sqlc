@@ -181,6 +181,9 @@ func (c *Compiler) expandStmt(qc *QueryCatalog, raw *ast.RawStmt, node ast.Node)
 			tableName := c.quoteIdent(t.Rel.Name)
 			scopeName := c.quoteIdent(scope)
 			for _, column := range t.Columns {
+				if column.IsHidden {
+					continue
+				}
 				cname := column.Name
 				if res.Name != nil {
 					cname = *res.Name

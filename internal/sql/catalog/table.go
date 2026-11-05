@@ -130,6 +130,11 @@ type Column struct {
 	Comment    string
 	Length     *int
 
+	// IsHidden marks a column the relation offers by name without listing
+	// it, as an fts5 table offers rowid and rank. A query may name one; a
+	// star does not expand to it and the table's model leaves it out.
+	IsHidden bool
+
 	// TypeExpr is the type as the analysis core wrote it, with the
 	// arguments and nesting Type and IsArray flatten away. It is unset
 	// on the legacy path.
@@ -314,11 +319,6 @@ func (c *Catalog) createTable(stmt *ast.CreateTableStmt) error {
 	}
 
 	for _, col := range stmt.Cols {
-		// The legacy catalog has no notion of a hidden column, so it drops
-		// them rather than list them on the table.
-		if col.IsHidden {
-			continue
-		}
 		if notNull, ok := seen[col.Colname]; ok {
 			seen[col.Colname] = notNull || col.IsNotNull
 			if a, ok := coltype[col.Colname]; ok {
@@ -356,6 +356,7 @@ func (c *Catalog) defineColumn(table *ast.TableName, col *ast.ColumnDef) (*Colum
 		ArrayDims:  col.ArrayDims,
 		Comment:    col.Comment,
 		Length:     col.Length,
+		IsHidden:   col.IsHidden,
 	}
 	if col.Vals != nil {
 		typeName := ast.TypeName{

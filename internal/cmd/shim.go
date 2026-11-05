@@ -84,6 +84,12 @@ func pluginCatalog(c *catalog.Catalog) *plugin.Catalog {
 		for _, t := range s.Tables {
 			var columns []*plugin.Column
 			for _, c := range t.Columns {
+				// A hidden column is offered by name but is not part of
+				// the table's model, so it is left out of the struct a
+				// plugin generates for the table.
+				if c.IsHidden {
+					continue
+				}
 				l := -1
 				if c.Length != nil {
 					l = *c.Length

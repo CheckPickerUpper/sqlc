@@ -31,6 +31,10 @@ type Column struct {
 	IsNamedParam bool
 	IsFuncCall   bool
 
+	// IsHidden marks a column the table offers by name without listing it,
+	// as an fts5 table offers rowid and rank. A star does not expand to it.
+	IsHidden bool
+
 	// XXX: Figure out what PostgreSQL calls `foo.id`
 	Scope      string
 	Table      *ast.TableName
