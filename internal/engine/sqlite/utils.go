@@ -67,13 +67,35 @@ func typeName(n *meyer.TypeName) string {
 		return ""
 	}
 	var sb strings.Builder
-	sb.WriteString(strings.ReplaceAll(n.Name, " ", ""))
+	sb.WriteString(strings.ReplaceAll(declaredType(n.Name), " ", ""))
 	if len(n.Args) > 0 {
 		sb.WriteString("(")
 		sb.WriteString(strings.Join(n.Args, ","))
 		sb.WriteString(")")
 	}
 	return sb.String()
+}
+
+// declaredType drops a trailing GENERATED ALWAYS from a column's type.
+//
+// SQLite's grammar reads a column's type as a run of identifiers, so the parser
+// hands back the keywords of the constraint that follows joined onto the type:
+// `import_state_text TEXT GENERATED ALWAYS AS (...) STORED` arrives as the type
+// "TEXT GENERATED ALWAYS". That reaches a code generator as a type named
+// textgeneratedalways, which no mapping has, so one stored generated column
+// stops every query in the schema.
+//
+// GENERATED is a keyword and cannot be part of a type name, so what precedes it
+// is the whole type. ALWAYS is optional in SQLite, which accepts a bare
+// GENERATED, and both spellings are trimmed.
+func declaredType(name string) string {
+	fields := strings.Fields(name)
+	for at, field := range fields {
+		if strings.EqualFold(field, "generated") {
+			return strings.Join(fields[:at], " ")
+		}
+	}
+	return name
 }
 
 // typeSpelling returns the type as the author wrote it — identifier tokens
